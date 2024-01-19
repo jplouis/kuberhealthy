@@ -19,6 +19,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 
 	apiv1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
@@ -107,6 +108,7 @@ type Checker struct {
 	hostname                 string             // hostname cache
 	checkPodName             string             // the current unique checker pod name
 	KHWorkload               khstatev1.KHWorkload
+	store                    cache.Store
 }
 
 func init() {
@@ -117,12 +119,12 @@ func init() {
 }
 
 // New creates a new external checker
-func New(client *kubernetes.Clientset, checkConfig *khcheckv1.KuberhealthyCheck, khCheckClient *khcheckv1.KHCheckV1Client, khStateClient *khstatev1.KHStateV1Client, reportingURL string) *Checker {
+func New(client *kubernetes.Clientset, checkConfig *khcheckv1.KuberhealthyCheck, khCheckClient *khcheckv1.KHCheckV1Client, khStateClient *khstatev1.KHStateV1Client, store cache.Store, reportingURL string) *Checker {
 
-	return NewCheck(client, checkConfig, khCheckClient, khStateClient, reportingURL)
+	return NewCheck(client, checkConfig, khCheckClient, khStateClient, store, reportingURL)
 }
 
-func NewCheck(client *kubernetes.Clientset, checkConfig *khcheckv1.KuberhealthyCheck, khCheckClient *khcheckv1.KHCheckV1Client, khStateClient *khstatev1.KHStateV1Client, reportingURL string) *Checker {
+func NewCheck(client *kubernetes.Clientset, checkConfig *khcheckv1.KuberhealthyCheck, khCheckClient *khcheckv1.KHCheckV1Client, khStateClient *khstatev1.KHStateV1Client, store cache.Store, reportingURL string) *Checker {
 
 	if len(checkConfig.Namespace) == 0 {
 		checkConfig.Namespace = "kuberhealthy"
@@ -143,6 +145,7 @@ func NewCheck(client *kubernetes.Clientset, checkConfig *khcheckv1.KuberhealthyC
 		PodSpec:                  checkConfig.Spec.PodSpec,
 		KubeClient:               client,
 		KHWorkload:               khstatev1.KHCheck,
+		store:                    store,
 	}
 }
 
@@ -199,7 +202,8 @@ func (ext *Checker) podName() string {
 func (ext *Checker) CurrentStatus() (bool, []string) {
 
 	// fetch the state from the resource
-	state, err := ext.getKHState()
+	//JPL: candidate for cache
+	state, err := ext.getCachedKHState()
 	if err != nil {
 		if k8sErrors.IsNotFound(err) || strings.Contains(err.Error(), "not found") {
 			// if the resource is not found, we default to "up" so not to throw alarms before the first run completes
@@ -729,12 +733,20 @@ func (ext *Checker) getKHState() (khstatev1.KuberhealthyState, error) {
 	return ext.KHStateClient.KuberhealthyStates(ext.Namespace).Get(ext.CheckName, metav1.GetOptions{})
 }
 
+// getKHState gets the khstate for this check from the resource in the API server
+func (ext *Checker) getCachedKHState() (khstatev1.KuberhealthyState, error) {
+	// fetch the khstate as it exists
+	cacheClient := khstatev1.NewCachedKHStatev1Client(*ext.KHStateClient, nil)
+	return cacheClient.KuberhealthyStates(ext.Namespace).Get(ext.CheckName, metav1.GetOptions{})
+}
+
 // getCheckLastUpdateTime fetches the last time the khstate custom resource for this check was updated
 // as a time.Time.
 func (ext *Checker) getCheckLastUpdateTime() (metav1.Time, error) {
 
 	// fetch the state from the resource
-	state, err := ext.getKHState()
+	//JPL candidate for cache
+	state, err := ext.getCachedKHState()
 	if err != nil && (k8sErrors.IsNotFound(err) || strings.Contains(err.Error(), "not found")) {
 		return metav1.Time{}, nil
 	}

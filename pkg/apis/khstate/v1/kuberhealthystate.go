@@ -19,6 +19,7 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 )
 
 // KuberhealthyStatesGetter has a method to return a KuberhealthyStateInterface.
@@ -52,12 +54,67 @@ type kuberhealthyStates struct {
 	ns     string
 }
 
+// cacheduberhealthyStates implements KuberhealthyStateInterface
+type cachedKuberhealthyStates struct {
+	store cache.Store
+	kuberhealthyStates
+}
+
 // newKuberhealthyStates returns a KuberhealthyStates
-func newKuberhealthyStates(c *KHStateV1Client, namespace string) *kuberhealthyStates {
+func newKuberhealthyStates(c *KHStateV1Client, namespace string) KuberhealthyStateInterface {
 	return &kuberhealthyStates{
 		client: c.RESTClient(),
 		ns:     namespace,
 	}
+}
+
+// newKuberhealthyStates returns a KuberhealthyStates
+func newCachedKuberhealthyStates(c *KHStateV1Client, store cache.Store, namespace string) KuberhealthyStateInterface {
+	return &cachedKuberhealthyStates{
+		store,
+		kuberhealthyStates{
+			client: c.RESTClient(),
+			ns:     namespace,
+		},
+	}
+}
+
+// Get takes name of the kuberhealthyState, and returns the corresponding kuberhealthyState object, and an error if there is any.
+func (c *cachedKuberhealthyStates) Get(name string, options metav1.GetOptions) (result KuberhealthyState, err error) {
+	var ok bool
+	khStateList := c.store.List()
+	for _, khStateUndefined := range khStateList {
+		// log.Debugln("state reflector store item from listing:", i, khStateUndefined)
+		result, ok = khStateUndefined.(KuberhealthyState)
+		if !ok {
+			// log.Warningln("attempted to convert item from state cache reflector to a khstatev1.KuberhealthyState, but the type was invalid")
+			continue
+		}
+		if result.Namespace == c.ns && result.Name == name {
+			return result, nil
+		}
+	}
+	return KuberhealthyState{}, errors.New("Not found")
+
+}
+
+// List takes label and field selectors, and returns the list of KuberhealthyStates that match those selectors.
+func (c *cachedKuberhealthyStates) List(opts metav1.ListOptions) (result KuberhealthyStateList, err error) {
+	items := []KuberhealthyState{}
+
+	result = KuberhealthyStateList{}
+	khStateList := c.store.List()
+	for _, khStateUndefined := range khStateList {
+		// log.Debugln("state reflector store item from listing:", i, khStateUndefined)
+		khState, ok := khStateUndefined.(KuberhealthyState)
+		if !ok {
+			// log.Warningln("attempted to convert item from state cache reflector to a khstatev1.KuberhealthyState, but the type was invalid")
+			continue
+		}
+		items = append(items, khState)
+
+	}
+	return KuberhealthyStateList{Items: items}, nil
 }
 
 // Get takes name of the kuberhealthyState, and returns the corresponding kuberhealthyState object, and an error if there is any.

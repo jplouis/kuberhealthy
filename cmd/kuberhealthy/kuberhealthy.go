@@ -440,14 +440,14 @@ func (k *Kuberhealthy) getKHCheck(namespace string, checkName string) (khcheckv1
 }
 
 // listKHStates lists all kuberhealthy states in the specified namespace
-func (k *Kuberhealthy) listKHStates(namespace string) (khstatev1.KuberhealthyStateList, error) {
-	return khStateClient.KuberhealthyStates(namespace).List(metav1.ListOptions{})
-}
-
+// func (k *Kuberhealthy) listKHStates(namespace string) (khstatev1.KuberhealthyStateList, error) {
+// return khStateClient.KuberhealthyStates(namespace).List(metav1.ListOptions{})
+// }
+//
 // getKHState gets the specified khstate in the specified namespace
-func (k *Kuberhealthy) getKHState(namespace string, checkName string) (khstatev1.KuberhealthyState, error) {
-	return khStateClient.KuberhealthyStates(namespace).Get(checkName, metav1.GetOptions{})
-}
+// func (k *Kuberhealthy) getKHState(namespace string, checkName string) (khstatev1.KuberhealthyState, error) {
+// return khStateClient.KuberhealthyStates(namespace).Get(checkName, metav1.GetOptions{})
+// }
 
 // watchForKHCheckChanges watches for changes to khcheck objects and returns them through the specified channel
 func (k *Kuberhealthy) watchForKHCheckChanges(ctx context.Context, c chan struct{}) {
@@ -667,7 +667,8 @@ func (k *Kuberhealthy) addExternalChecks(ctx context.Context) error {
 
 		// create a new kubernetes client for this external checker
 		log.Infoln("Enabling external check:", kc.Name)
-		c := external.New(kubernetesClient, &kc, khCheckClient, khStateClient, cfg.ExternalCheckReportingURL)
+		c := external.New(kubernetesClient, &kc, khCheckClient, khStateClient, k.stateReflector.store, cfg.ExternalCheckReportingURL)
+		// khStateClient.KuberhealthyStates()
 
 		// parse the run interval string from the custom resource and setup the run interval
 		c.RunInterval, err = time.ParseDuration(kc.Spec.RunInterval)

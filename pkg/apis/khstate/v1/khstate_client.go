@@ -21,12 +21,33 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 type KHStateV1Interface interface {
 	RESTClient() rest.Interface
 	KuberhealthyStatesGetter
+}
+
+// type CachedKHStateInterface interface {
+// 	KHStateV1Interface
+// }
+
+type CachedKHStatev1Client struct {
+	store cache.Store
+	KHStateV1Client
+}
+
+func (cc *CachedKHStatev1Client) KuberhealthyStates(namespace string) KuberhealthyStateInterface {
+	return newCachedKuberhealthyStates(&cc.KHStateV1Client, cc.store, namespace)
+}
+
+func NewCachedKHStatev1Client(client KHStateV1Client, store cache.Store) KHStateV1Interface {
+	return &CachedKHStatev1Client{
+		store,
+		client,
+	}
 }
 
 // KHStateV1Client is used to interact with features provided by the khstate group.
@@ -36,6 +57,7 @@ type KHStateV1Client struct {
 
 func (c *KHStateV1Client) KuberhealthyStates(namespace string) KuberhealthyStateInterface {
 	return newKuberhealthyStates(c, namespace)
+
 }
 
 func Client(kubeConfigFile string) (*KHStateV1Client, error) {
