@@ -736,7 +736,7 @@ func (ext *Checker) getKHState() (khstatev1.KuberhealthyState, error) {
 // getKHState gets the khstate for this check from the resource in the API server
 func (ext *Checker) getCachedKHState() (khstatev1.KuberhealthyState, error) {
 	// fetch the khstate as it exists
-	cacheClient := khstatev1.NewCachedKHStatev1Client(*ext.KHStateClient, nil)
+	cacheClient := khstatev1.NewCachedKHStatev1Client(*ext.KHStateClient, ext.store)
 	return cacheClient.KuberhealthyStates(ext.Namespace).Get(ext.CheckName, metav1.GetOptions{})
 }
 
